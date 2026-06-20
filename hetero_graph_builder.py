@@ -170,6 +170,7 @@ class HeterogeneousGeometricGraphBuilder:
         process_feature_cols: Iterable[str] = DEFAULT_PROCESS_FEATURES,
         rare_file_min_degree: int = 2,
         rare_file_max_degree: int = 10,
+        parent_max_children: int | None = 25,
         rare_remote_min_degree: int = 2,
         rare_remote_max_degree: int = 20,
         add_host_edges: bool = True,
@@ -186,6 +187,7 @@ class HeterogeneousGeometricGraphBuilder:
         self.process_feature_cols = tuple(process_feature_cols)
         self.rare_file_min_degree = rare_file_min_degree
         self.rare_file_max_degree = rare_file_max_degree
+        self.parent_max_children = parent_max_children
         self.rare_remote_min_degree = rare_remote_min_degree
         self.rare_remote_max_degree = rare_remote_max_degree
         self.add_host_edges = add_host_edges
@@ -207,6 +209,7 @@ class HeterogeneousGeometricGraphBuilder:
         self.sessions: list[list[str]] = []
         self.session_process_indices: list[torch.Tensor] = []
         self.report_: dict[str, object] = {}
+        self.sessionization_drops_: dict[str, int] = {}
         self._uf: UnionFind | None = None
 
     def build_graph(
@@ -328,6 +331,17 @@ class HeterogeneousGeometricGraphBuilder:
         links = links[links[c.parent_col].isin(process_map)]
         links = links[links[c.parent_col] != links[c.id_col]]
         links = links.drop_duplicates(subset=[c.parent_col, c.id_col])
+
+        if self.parent_max_children is not None and not links.empty:
+            child_counts = links.groupby(c.parent_col)[c.id_col].transform("nunique")
+            high_fanout = child_counts > self.parent_max_children
+            self.sessionization_drops_["parent_child_high_fanout_parent_count"] = int(
+                links.loc[high_fanout, c.parent_col].nunique()
+            )
+            self.sessionization_drops_["parent_child_high_fanout_edge_count"] = int(
+                high_fanout.sum()
+            )
+            links = links[~high_fanout]
 
         src = links[c.parent_col].map(process_map).to_numpy(np.int64)
         dst = links[c.id_col].map(process_map).to_numpy(np.int64)
@@ -555,10 +569,20 @@ class HeterogeneousGeometricGraphBuilder:
             "node_types": {node_type: int(store.num_nodes) for node_type, store in data.node_items()},
             "edge_counts": edge_counts,
             "process_feature_columns": self.feature_columns_,
+            "sessionization_params": {
+                "rare_file_min_degree": self.rare_file_min_degree,
+                "rare_file_max_degree": self.rare_file_max_degree,
+                "parent_max_children": self.parent_max_children,
+                "rare_remote_min_degree": self.rare_remote_min_degree,
+                "rare_remote_max_degree": self.rare_remote_max_degree,
+                "add_same_user_edges": self.add_same_user_edges,
+            },
+            "sessionization_drops": self.sessionization_drops_,
             "n_sessions": int(len(self.sessions)),
             "median_session_size": float(np.median(sizes)),
             "p95_session_size": float(np.quantile(sizes, 0.95)),
             "max_session_size": int(sizes.max()),
+            "max_session_fraction": float(sizes.max() / max(int(data["process"].num_nodes), 1)),
             "singletons": int((sizes == 1).sum()),
         }
         data.graph_report = self.report_
