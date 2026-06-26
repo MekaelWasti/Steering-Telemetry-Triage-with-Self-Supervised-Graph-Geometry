@@ -7,6 +7,8 @@ If we confirm ONE malicious session, can we find the others?
 
 This is **few-shot triage.** One confirmed incident (manually or suggested agentically) becomes a seed to pull back the related ones.
 
+![Steering Process](artifacts/presentation/steering_progression.gif)
+
 ---
 
 # 1. Data
@@ -103,6 +105,8 @@ for AP and recall@100.
 - The graph-derived "stable regions" find a confirmable incident
     - ~3× faster than sorting by raw anomaly score, and the steered queue then recovers the majority of remaining malicious sessions
     - Treated as **exploratory**
+ 
+![Steering Telemetry Triage Data Map Plot](artifacts/presentation/Steering Telemetry Triage Datamapplot-1.png)
 
 **STAMP Takeaway**
 
